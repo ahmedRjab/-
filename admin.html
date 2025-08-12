@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ar">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>لوحة الأدمن</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    body, html { height: 100%; margin: 0; font-family: Arial, sans-serif; }
+    #map { height: 100%; width: calc(100% - 300px); float: right; }
+    #sidebar { width: 300px; height: 100%; overflow:auto; float: left; border-left:1px solid #ddd; padding:10px; box-sizing:border-box; background:#f7f7f7; }
+    .user-row { padding:8px; border-bottom:1px solid #eee; display:flex; align-items:center; gap:8px; cursor:pointer; }
+    .dot { width:12px; height:12px; border-radius:50%; background:green; display:inline-block; }
+    .user-name { flex:1; }
+  </style>
+</head>
+<body>
+  <div id="sidebar">
+    <h2>المتصلون الآن</h2>
+    <div id="list"></div>
+  </div>
+  <div id="map"></div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAhSBx1p7tEYFTMDOrJak-ZeFm9Y5ACQMw"></script>
+  <script>
+  let map;
+  const markers = {};
+  const infoWindows = {};
+
+  function initMap() {
+    map = new google.maps.Map(document.getElementById('map'), {
+      center: { lat: 33.0, lng: 44.0 },
+      zoom: 6
+    });
+  }
+  initMap();
+
+  const usersRef = database.ref('users');
+
+  // تحديث فوري لكل القائمة والخريطة
+  usersRef.on('value', (snapshot) => {
+    const data = snapshot.val() || {};
+    // مسح القديم
+    for (let uid in markers) {
+      removeMarker(uid);
+    }
+    document.getElementById('list').innerHTML = '';
+    // إضافة الجديد
+    for (let uid in data) {
+      addMarker(uid, data[uid]);
+      addToList(uid, data[uid]);
+    }
+  });
+
+  function addMarker(uid, data) {
+    const pos = { lat: data.lat, lng: data.lng };
+    const marker = new google.maps.Marker({
+      position: pos,
+      map,
+      label: { text: '1', color: 'white' },
+      title: data.name
+    });
+    const inf = new google.maps.InfoWindow({
+      content: `<strong>${data.name}</strong><br>آخر تحديث: ${new Date(data.lastSeen).toLocaleTimeString()}`
+    });
+    marker.addListener('click', () => inf.open(map, marker));
+    markers[uid] = marker;
+    infoWindows[uid] = inf;
+  }
+
+  function removeMarker(uid) {
+    if (markers[uid]) {
+      markers[uid].setMap(null);
+      delete markers[uid];
+      delete infoWindows[uid];
+    }
+  }
+
+  function addToList(uid, data) {
+    const list = document.getElementById('list');
+    const row = document.createElement('div');
+    row.className = 'user-row';
+    row.id = 'user_' + uid;
+    row.innerHTML = `<span class="dot"></span><span class="user-name">${data.name}</span>`;
+    row.addEventListener('click', () => {
+      map.panTo(markers[uid].getPosition());
+      map.setZoom(17);
+      infoWindows[uid].open(map, markers[uid]);
+    });
+    list.appendChild(row);
+  }
+</script>
+</body>
+</html>
