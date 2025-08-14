@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <title>نظام تتبع لحظي — الأدمن والمستخدمين</title>
+  <style>
+    :root{
+      --bg:#0b1020; --card:#121936; --muted:#94a3b8; --ring:#22c55e; --danger:#ef4444;
+      --text:#e5e7eb; --accent:#3b82f6; --shadow:0 10px 25px rgba(0,0,0,.35);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:linear-gradient(180deg,#0b1020,#0a0f1f 25%,#0c1226);color:var(--text);font-family:"Tajawal",system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+    a{color:inherit}
+    .container{max-width:1100px;margin:0 auto;padding:24px}
+    .card{background:linear-gradient(180deg,#131b3d,#141a34);border:1px solid rgba(255,255,255,.06);border-radius:18px;box-shadow:var(--shadow)}
+    .stack{display:flex;flex-direction:column;gap:16px}
+    .row{display:flex;gap:12px;align-items:center}
+    .center{display:grid;place-items:center;min-height:100dvh;padding:18px}
+    .title{font-size:28px;font-weight:800;letter-spacing:.5px}
+    .muted{color:var(--muted)}
+    .input{background:#0f1530;border:1px solid rgba(255,255,255,.08);color:var(--text);border-radius:14px;padding:14px 16px;width:100%;outline:none}
+    .input:focus{border-color:#3b82f6;box-shadow:0 0 0 4px rgba(59,130,246,.15)}
+    .btn{appearance:none;border:0;border-radius:14px;padding:13px 18px;font-weight:700;cursor:pointer;transition:.2s;box-shadow:var(--shadow)}
+    .btn.primary{background:linear-gradient(180deg,#3b82f6,#2563eb);color:white}
+    .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,.12);color:var(--text)}
+    .btn.danger{background:linear-gradient(180deg,#ef4444,#dc2626);color:white}
+    .btn:disabled{opacity:.6;cursor:not-allowed}
+    .footerNote{margin-top:8px;font-size:13px;color:#a7b3c5;opacity:.9}
+    .pill{display:inline-flex;align-items:center;gap:8px;background:#0e1431;border:1px solid rgba(255,255,255,.08);padding:10px 14px;border-radius:999px}
+
+    /* Screens */
+    .screen{display:none}
+    .screen.active{display:block}
+
+    /* Top bar */
+    .topbar{position:fixed;top:12px;right:12px;left:12px;display:flex;justify-content:space-between;align-items:center;gap:12px;z-index:30}
+    .topbar .bar{backdrop-filter:blur(8px);background:rgba(8,11,26,.6);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:10px 14px;display:flex;align-items:center;gap:10px}
+    .menuBtn{width:42px;height:42px;border-radius:12px;border:1px solid rgba(255,255,255,.12);display:grid;place-items:center;background:#0f1530;cursor:pointer}
+
+    /* Sheet (three-dots menu) */
+    .sheet{position:fixed;top:0;right:0;bottom:0;width:340px;max-width:92vw;background:#0d1330;border-left:1px solid rgba(255,255,255,.08);box-shadow:-16px 0 40px rgba(0,0,0,.35);transform:translateX(105%);transition:.25s;z-index:40;display:flex;flex-direction:column}
+    .sheet.open{transform:translateX(0)}
+    .sheetHeader{padding:16px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:space-between}
+    .sheetBody{padding:12px;overflow:auto}
+    .chip{display:inline-flex;gap:8px;align-items:center;padding:6px 10px;border-radius:999px;background:#0a0f26;border:1px solid rgba(255,255,255,.08);font-size:12px;color:#c6d1e6}
+    .dot{width:10px;height:10px;border-radius:999px;background:var(--ring);box-shadow:0 0 0 4px rgba(34,197,94,.15)}
+    .userItem{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid rgba(255,255,255,.08);background:#0e1431;border-radius:14px;margin-bottom:8px}
+
+    /* Map */
+    #map{width:100%;height:70vh;border-radius:18px;border:1px solid rgba(255,255,255,.08)}
+
+    .hint{font-size:13px;color:#bac7d9}
+  </style>
+</head>
+<body>
+  <!-- Top bar (admin only) -->
+  <div class="topbar" id="adminTopbar" style="display:none">
+    <div class="bar">
+      <span class="chip"><span class="dot"></span> الأدمن متصل</span>
+    </div>
+    <div class="bar">
+      <button class="menuBtn" id="openMenuBtn" title="قائمة المتصلين" aria-label="قائمة المتصلين">
+        <!-- three dots icon -->
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="5" cy="12" r="2" fill="#cbd5e1"/>
+          <circle cx="12" cy="12" r="2" fill="#cbd5e1"/>
+          <circle cx="19" cy="12" r="2" fill="#cbd5e1"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Side sheet -->
+  <aside class="sheet" id="sheet">
+    <div class="sheetHeader">
+      <div class="row"><div class="dot"></div><strong>الأشخاص المتصلون الآن</strong></div>
+      <button class="btn ghost" id="closeMenuBtn">إغلاق</button>
+    </div>
+    <div class="sheetBody">
+      <div id="usersList"></div>
+      <div style="height:10px"></div>
+      <button id="clearAllBtn" class="btn danger" style="width:100%">حذف جميع المستخدمين</button>
+      <p class="hint" style="margin-top:8px">سيتم حذف جميع الأسماء من الليستة وقاعدة البيانات.</p>
+    </div>
+  </aside>
+
+  <!-- LOGIN SCREEN -->
+  <section id="screen-login" class="screen active">
+    <div class="center">
+      <div class="container">
+        <div class="card" style="padding:22px 22px 26px">
+          <div class="stack">
+            <div class="title">تسجيل الدخول</div>
+            <div class="muted">إذا كان اسم المستخدم <b>ahmed</b> وكلمة المرور <b>2025</b> سيتم دخولك كـ <b>أدمن</b>. لأي بيانات أخرى ستنتقل كـ <b>مستخدم عادي</b>.</div>
+            <div class="row">
+              <input id="login-username" class="input" placeholder="اسم المستخدم" autocomplete="username" />
+            </div>
+            <div class="row">
+              <input id="login-password" type="password" class="input" placeholder="كلمة المرور" autocomplete="current-password" />
+            </div>
+            <div class="row" style="gap:10px">
+              <button id="loginBtn" class="btn primary" style="width:200px">دخول</button>
+            </div>
+            <div class="footerNote">تصميم وتنفيذ الاستاذ احمد رجب خليل</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- USER REGISTER/SHARE LOCATION SCREEN -->
+  <section id="screen-user" class="screen">
+    <div class="center">
+      <div class="container">
+        <div class="card" style="padding:22px 22px 26px">
+          <div class="stack">
+            <div class="title">المستخدم — مشاركة الموقع</div>
+            <div class="muted">اكتب اسمك ليظهر في الليستة وعلى الخريطة، ثم وافق على مشاركة موقعك.</div>
+            <div class="row">
+              <input id="user-display-name" class="input" placeholder="اسمك الذي سيظهر" />
+            </div>
+            <div class="row" style="gap:10px">
+              <button id="startShareBtn" class="btn primary">ابدأ المشاركة</button>
+              <button id="logoutUserBtn" class="btn ghost">تسجيل خروج</button>
+            </div>
+            <div id="userStatus" class="hint"></div>
+            <div class="footerNote">تصميم وتنفيذ الاستاذ احمد رجب خليل</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ADMIN SCREEN -->
+  <section id="screen-admin" class="screen">
+    <div class="container" style="padding-top:76px">
+      <div class="stack">
+        <div class="row" style="justify-content:space-between">
+          <div class="title">لوحة الأدمن — تتبع لحظي</div>
+          <button id="logoutAdminBtn" class="btn ghost">تسجيل خروج</button>
+        </div>
+        <div id="map" role="application" aria-label="خريطة مواقع المستخدمين"></div>
+        <div class="row">
+          <span class="pill">يتم تحديث المواقع لحظيًا (حتى كل ثانية)</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <script>
+  // =====================[ 1) إعداد Firebase ]====================
+  // ⚠️ ضع معلومات مشروعك هنا ثم احفظ الملف
+  const firebaseConfig = {
+    apiKey: "YOUR_FIREBASE_API_KEY",
+    authDomain: "map9-a344b.firebaseapp.com",
+    databaseURL: "https://map9-a344b-default-rtdb.firebaseio.com",
+    projectId: "map9-a344b",
+    storageBucket: "map9-a344b.firebasestorage.app",
+    messagingSenderId: "604724787540",
+    appId: "1:604724787540:web:0824c526696e82947070c1"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  // =====================[ 2) حالة الواجهة (Routing بسيط) ]====================
+  const screens = {
+    login: document.getElementById('screen-login'),
+    user: document.getElementById('screen-user'),
+    admin: document.getElementById('screen-admin')
+  };
+  function showScreen(key){
+    Object.values(screens).forEach(s=>s.classList.remove('active'));
+    screens[key].classList.add('active');
+    document.getElementById('adminTopbar').style.display = (key==='admin')? 'flex':'none';
+    if(key==='admin'){ ensureMapLoaded(); startAdminListeners(); }
+  }
+
+  // =====================[ 3) تخزين محلي للمستخدم ]====================
+  const LS = {
+    id: 'trackerUserId',
+    name: 'trackerUserName'
+  };
+  function getLocalUser(){
+    return { id: localStorage.getItem(LS.id), name: localStorage.getItem(LS.name) };
+  }
+  function setLocalUser(id,name){
+    if(id) localStorage.setItem(LS.id,id); else localStorage.removeItem(LS.id);
+    if(name) localStorage.setItem(LS.name,name); else localStorage.removeItem(LS.name);
+  }
+
+  // =====================[ 4) عناصر DOM ]====================
+  const loginBtn = document.getElementById('loginBtn');
+  const usernameEl = document.getElementById('login-username');
+  const passwordEl = document.getElementById('login-password');
+  const userNameEl = document.getElementById('user-display-name');
+  const startShareBtn = document.getElementById('startShareBtn');
+  const logoutUserBtn = document.getElementById('logoutUserBtn');
+  const logoutAdminBtn = document.getElementById('logoutAdminBtn');
+  const statusEl = document.getElementById('userStatus');
+
+  const openMenuBtn = document.getElementById('openMenuBtn');
+  const closeMenuBtn = document.getElementById('closeMenuBtn');
+  const sheet = document.getElementById('sheet');
+  const usersList = document.getElementById('usersList');
+  const clearAllBtn = document.getElementById('clearAllBtn');
+
+  openMenuBtn.onclick = ()=> sheet.classList.add('open');
+  closeMenuBtn.onclick = ()=> sheet.classList.remove('open');
+
+  // =====================[ 5) تسجيل الدخول ]====================
+  loginBtn.addEventListener('click', () => {
+    const u = (usernameEl.value||'').trim();
+    const p = (passwordEl.value||'').trim();
+    if(u === 'ahmed' && p === '2025'){
+      // Admin
+      sessionStorage.setItem('isAdmin','1');
+      showScreen('admin');
+    } else {
+      // Normal user -> go to user screen regardless
+      sessionStorage.removeItem('isAdmin');
+      showScreen('user');
+    }
+  });
+
+  // =====================[ 6) المستخدم العادي: مشاركة الموقع ]====================
+  let watchId = null; let tickInterval = null; let currentUserRef = null;
+
+  async function startSharing(){
+    const displayName = (userNameEl.value||'').trim();
+    if(!displayName){
+      alert('الرجاء كتابة اسمك أولاً');
+      return;
+    }
+
+    // احصل أو أنشئ معرف محلي ثابت لهذا المتصفح
+    let { id } = getLocalUser();
+    if(!id){ id = 'u_' + Math.random().toString(36).slice(2,10); }
+
+    // مرجع المستخدم في القاعدة
+    currentUserRef = db.ref('users/'+id);
+
+    // حدّث الاسم و حالة الاتصال
+    await currentUserRef.update({ name: displayName, online: true, updatedAt: Date.now() });
+    setLocalUser(id, displayName);
+
+    // مراقبة الموقع — أفضلية watchPosition + تحديث قسري كل ثانية
+    if(!('geolocation' in navigator)){
+      statusEl.textContent = 'المتصفح لا يدعم تحديد الموقع';
+      return;
+    }
+
+    statusEl.textContent = 'جاري طلب صلاحية الموقع…';
+
+    // دالة إرسال التحديث لقاعدة البيانات
+    const pushLocation = (pos) => {
+      const { latitude, longitude } = pos.coords;
+      currentUserRef.update({ lat: latitude, lng: longitude, online: true, updatedAt: Date.now() });
+    };
+
+    // 1) تحديث عند أي تغيير
+    watchId = navigator.geolocation.watchPosition(pushLocation, (err)=>{
+      statusEl.textContent = 'تعذر الحصول على الموقع: ' + err.message;
+    }, { enableHighAccuracy: true, maximumAge: 0, timeout: 8000 });
+
+    // 2) تحديث قسري كل ثانية (احتياط)
+    tickInterval = setInterval(()=>{
+      navigator.geolocation.getCurrentPosition(pushLocation, ()=>{}, { enableHighAccuracy:true, maximumAge:0, timeout:5000 });
+    }, 1000);
+
+    statusEl.textContent = 'يتم مشاركة موقعك الآن…';
+  }
+
+  async function stopSharing(){
+    if(watchId!==null){ navigator.geolocation.clearWatch(watchId); watchId=null; }
+    if(tickInterval){ clearInterval(tickInterval); tickInterval=null; }
+    const { id } = getLocalUser();
+    try{
+      if(id){ await db.ref('users/'+id).remove(); }
+    }catch(e){ console.warn(e); }
+    setLocalUser(null,null);
+  }
+
+  startShareBtn.addEventListener('click', startSharing);
+  logoutUserBtn.addEventListener('click', async ()=>{
+    await stopSharing();
+    alert('تم تسجيل الخروج وحذفك من الخريطة والليستة');
+    showScreen('login');
+  });
+
+  window.addEventListener('beforeunload', async ()=>{ // حذف عند إغلاق المتصفح
+    const { id } = getLocalUser();
+    if(id){ navigator.sendBeacon(db.ref('users/'+id).toString()+'.json', JSON.stringify(null)); }
+  });
+
+  // =====================[ 7) الأدمن: الخريطة + قائمة المتصلين ]====================
+  let gmap = null; let markers = {}; // id -> marker
+  let usersRef = null; let usersSubbed = false;
+
+  function ensureMapLoaded(){
+    if(window.google && window.google.maps){ initMap(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyAhSBx1p7tEYFTMDOrJak-ZeFm9Y5ACQMw&callback=initMap&language=ar&region=EG';
+    s.async = true; s.defer = true;
+    document.head.appendChild(s);
+  }
+
+  window.initMap = function(){
+    if(gmap) return;
+    gmap = new google.maps.Map(document.getElementById('map'), {
+      center: {lat: 33.3152, lng: 44.3661}, // بغداد كنقطة افتراضية
+      zoom: 12,
+      mapId: 'DEMO_MAP_ID'
+    });
+  }
+
+  function startAdminListeners(){
+    if(usersSubbed) return;
+    usersRef = db.ref('users');
+
+    usersRef.on('child_added', snap => {
+      const id = snap.key; const v = snap.val()||{};
+      addOrUpdateMarker(id, v);
+      renderUsersList();
+    });
+    usersRef.on('child_changed', snap => {
+      const id = snap.key; const v = snap.val()||{};
+      addOrUpdateMarker(id, v);
+      renderUsersList();
+    });
+    usersRef.on('child_removed', snap => {
+      const id = snap.key;
+      if(markers[id]){ markers[id].setMap(null); delete markers[id]; }
+      renderUsersList();
+    });
+
+    usersSubbed = true;
+
+    clearAllBtn.onclick = async ()=>{
+      if(confirm('سيتم حذف جميع المستخدمين من الليستة وقاعدة البيانات. هل أنت متأكد؟')){
+        await usersRef.remove();
+        renderUsersList();
+      }
+    }
+  }
+
+  function addOrUpdateMarker(id, v){
+    if(!v || v.lat==null || v.lng==null) return;
+    const pos = {lat: v.lat, lng: v.lng};
+    if(!markers[id]){
+      markers[id] = new google.maps.Marker({
+        position: pos,
+        map: gmap,
+        title: v.name || id,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 7,
+          fillColor: '#22c55e', fillOpacity: 0.95,
+          strokeWeight: 2, strokeColor: '#052e16'
+        }
+      });
+    } else {
+      markers[id].setPosition(pos);
+      markers[id].setTitle(v.name || id);
+    }
+  }
+
+  function renderUsersList(){
+    if(!usersRef) return;
+    usersRef.once('value').then(snap=>{
+      const data = snap.val()||{}; const entries = Object.entries(data);
+      usersList.innerHTML = '';
+      entries.forEach(([id, v])=>{
+        const row = document.createElement('div');
+        row.className = 'userItem';
+        row.innerHTML = `
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="dot"></span>
+            <strong>${escapeHtml(v.name||id)}</strong>
+          </div>
+          <button class="btn ghost" data-id="${id}">عرض</button>
+        `;
+        row.querySelector('button').onclick = ()=>{
+          if(markers[id]){
+            gmap.panTo(markers[id].getPosition());
+            gmap.setZoom(15);
+          }
+        }
+        usersList.appendChild(row);
+      });
+      if(entries.length===0){
+        usersList.innerHTML = '<div class="muted">لا يوجد مستخدمون متصلون حاليًا</div>';
+      }
+    });
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[ch]));
+  }
+
+  // =====================[ 8) أحداث عامة ]====================
+  logoutAdminBtn.addEventListener('click', ()=>{
+    sessionStorage.removeItem('isAdmin');
+    showScreen('login');
+  });
+
+  // العودة تلقائيًا إلى الشاشة السابقة حسب الحالة
+  (function bootstrap(){
+    if(sessionStorage.getItem('isAdmin')==='1'){
+      showScreen('admin');
+    } else if(getLocalUser().id){
+      showScreen('user');
+    } else {
+      showScreen('login');
+    }
+  })();
+  </script>
+</body>
+</html>
